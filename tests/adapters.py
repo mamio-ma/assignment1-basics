@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections import defaultdict
 from collections.abc import Iterable
 from typing import IO, Any, BinaryIO
 
@@ -8,6 +9,7 @@ import numpy.typing as npt
 import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
+from cs336_basics.Utils import read_chunks, pre_tokenization, train_bpe
 
 
 def run_linear(
@@ -589,4 +591,13 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    raise NotImplementedError
+    chunks = read_chunks(input_path, 4)
+    counts = pre_tokenization(chunks, special_tokens)
+    return train_bpe(counts, vocab_size - 256 - len(special_tokens), special_tokens)
+
+
+
+
+
+# run_train_bpe("/Users/mingyongma/Desktop/project/assignment1-basics/data/TinyStoriesV2-GPT4-train.txt", 0, [])
+# run_train_bpe("/Users/mingyongma/Desktop/project/assignment1-basics/data/TinyStoriesV2-GPT4-valid.txt", 300, ["<|endoftext|>"])
