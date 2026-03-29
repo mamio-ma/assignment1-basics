@@ -591,13 +591,13 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    chunks = read_chunks(input_path, 4)
+    chunks = read_chunks(input_path, 16)
     counts = pre_tokenization(chunks, special_tokens)
     return train_bpe(counts, vocab_size - 256 - len(special_tokens), special_tokens)
 
 
 
+import cProfile
 
-
-# run_train_bpe("/Users/mingyongma/Desktop/project/assignment1-basics/data/TinyStoriesV2-GPT4-train.txt", 0, [])
-# run_train_bpe("/Users/mingyongma/Desktop/project/assignment1-basics/data/TinyStoriesV2-GPT4-valid.txt", 300, ["<|endoftext|>"])
+if __name__ == "__main__":
+    cProfile.run('run_train_bpe("/Users/mingyongm/Desktop/project/assignment1-basics/data/TinyStoriesV2-GPT4-train.txt", 10000, ["<|endoftext|>"])')

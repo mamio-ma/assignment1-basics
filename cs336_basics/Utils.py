@@ -3,6 +3,7 @@ import regex as re
 import sys
 from collections import defaultdict
 from typing import BinaryIO, List, DefaultDict
+from multiprocessing import Process, Queue
 
 
 def read_chunks(path: str | os.PathLike,
@@ -71,19 +72,35 @@ def find_chunk_boundaries(
     # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
     return sorted(set(chunk_boundaries))
 
+def sum_word_count(chunk: str, special_tokens: List[str], q: Queue):
+    count: dict[str, int] = defaultdict(int)  ## store count of each words in str: e.g. {low: 5...}
+    pattern = "|".join(re.escape(t) for t in special_tokens)
+    chunk_without_special_tokens = re.split(pattern, chunk)
+    for corpus in chunk_without_special_tokens:
+        PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+        iter = re.finditer(PAT, corpus)
+        for match in iter:
+            count[match.group()] += 1
+
+    q.put(count)
+
 def pre_tokenization(chunks: List[str], special_tokens: List[str]) -> dict[tuple[bytes, ...], int]:
 
-    count: dict[str, int] = defaultdict(int)  ## store count of each words in str: e.g. {low: 5...}
+    q = Queue()
+    processes = []
     for chunk in chunks:
-        pattern = "|".join(re.escape(t) for t in special_tokens)
-        chunk_without_special_tokens = re.split(pattern, chunk)
+        p = Process(target=sum_word_count, args=(chunk, special_tokens, q))
+        p.start()
+        processes.append(p)
 
-        for corpus in chunk_without_special_tokens:
-            ## regex used for GPT-2
-            PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-            iter = re.finditer(PAT, corpus)
-            for match in iter:
-                count[match.group()] += 1
+    count: dict[str, int] = defaultdict(int)  ## store count of each words in str: e.g. {low: 5...}
+    for _ in processes:
+        partial = q.get()
+        for word, v in partial.items():
+            count[word] += v
+
+    for p in processes:
+        p.join()
 
     counts: DefaultDict[tuple[bytes, ...], int] = defaultdict(int)  ## store the count of each word in bytes: e.g. {(l,o,w): 5 …}
     for words, v in count.items():
@@ -106,7 +123,7 @@ def train_bpe(
             for idx in range(len(k) - 1):
                 counts[(k[idx], k[idx + 1])] += v
 
-        pair = max(counts, key=counts.get)
+        pair = max(counts, key=lambda p: (counts[p], p))
         index1, index2 = pair
         new_index = 256 + i
         merges.append(pair)
@@ -135,9 +152,3 @@ def train_bpe(
         vocab[i + len(vocab)] = token.encode("utf-8")
 
     return vocab, merges
-
-
-
-
-
-
