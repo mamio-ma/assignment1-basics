@@ -84,7 +84,12 @@ def sum_word_count(chunk: str, special_tokens: List[str], q: Queue):
 
     q.put(count)
 
-def pre_tokenization(chunks: List[str], special_tokens: List[str]) -> dict[tuple[bytes, ...], int]:
+def pre_tokenization(
+        path: str | os.PathLike,
+        desired_num_chunks,
+        special_tokens: List[str]) -> dict[tuple[bytes, ...], int]:
+
+    chunks = read_chunks(path, desired_num_chunks)
 
     q = Queue()
     processes = []

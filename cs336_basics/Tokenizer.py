@@ -11,21 +11,21 @@ class Tokenizer:
     _merge: list[tuple[bytes, bytes]]
     _special_tokens: list[str] | None
 
-    def __init__(self, vocab: Dict[int, bytes], merges: list[tuple[bytes, ...]], special_tokens: list[str] | None = None):
+    def __init__(self, vocab: Dict[int, bytes], merges: list[tuple[bytes, bytes]], special_tokens: list[str] | None = None):
         self._vocab = vocab
         self._merges = merges
         self._special_tokens = special_tokens
 
     @classmethod
-    def from_files(cls, vocab_filepath, merges_filepath, special_tokens=None):
+    def from_files(cls, vocab_filepath, merges_filepath, special_tokens: list[str] | None =None):
         _vocab = {}
         with open(vocab_filepath) as f:
             vocab = json.load(f)
             for k, v in vocab.items():
                 if special_tokens is not None and k in special_tokens:
-                    _vocab[k] = v
+                    _vocab[v] = k.encode("utf-8")
                     continue
-                _vocab[unicode_str_to_bytes(k)] = v
+                _vocab[v] = unicode_str_to_bytes(k)
 
         _merge = []
 
@@ -35,7 +35,7 @@ class Tokenizer:
                 k, v = line.split(' ')
                 _merge.append(tuple([unicode_str_to_bytes(k), unicode_str_to_bytes(v)]))
 
-        return cls(_vocab, _merge)
+        return cls(_vocab, _merge, special_tokens)
 
 
     def encode(self, text: str) -> List[int]:
@@ -44,25 +44,21 @@ class Tokenizer:
 
         if self._special_tokens:
             pattern = "|".join(re.escape(t) for t in self._special_tokens)
-            special_token_iter = re.finditer(pattern, text)
-            text_without_special_token = re.split(pattern, text)
+            # the difference between re.split(pattern, text) and re.split(f"({pattern})", text) is the second way will keep the special token
+            parts = re.split(f"({pattern})", text)
         else:
-            text_without_special_token = [text]
-            special_token_iter = None
+            parts = [text]
 
-        for corpus in text_without_special_token:
-            PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-            print(corpus)
-            for match in re.finditer(PAT, corpus):
-                pre_token_words.append(match.group())
+        for part in parts:
+            if self._special_tokens and part in self._special_tokens:
+                pre_token_words.append(part)
+            else:
+                PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+                for match in re.finditer(PAT, part):
+                    pre_token_words.append(match.group())
 
-            if special_token_iter:
-                special_token = next(special_token_iter).group()
-                pre_token_words.append(special_token)
-
-        vocab_reverse: Dict[bytes, int] = {}
-        for k, v in self._vocab.items():
-            vocab_reverse[v] = k
+        vocab_reverse: Dict[bytes, int] = {v: k for k, v in self._vocab.items()}
+        merge_priorities: Dict[tuple[bytes, bytes], int] = {pair: i for i, pair in enumerate(self._merges)}
 
         for word in pre_token_words:
 
@@ -74,30 +70,31 @@ class Tokenizer:
             ## apply merge
             while True:
 
-                if len(word_in_bytes) < 2:
-                    break
-                l = word_in_bytes[0]
-                r = word_in_bytes[1]
-                has_pair = False
-                for idx in range(len(self._merges)):
-                    if self._merges[idx] == (l, r):
-                        has_pair = True
-                        break
-                if has_pair is False:
+                merges_list = []
+                for i in range(len(word_in_bytes) - 1):
+                    pair = (word_in_bytes[i], word_in_bytes[i + 1])
+                    if pair in merge_priorities:
+                        merges_list.append((pair, merge_priorities[pair]))
+
+                if len(merges_list) == 0:
                     break
 
-                merge_pair = l + r
-                word_in_bytes = (merge_pair,) + word_in_bytes[2:]
+                best_pair = min(merges_list, key = lambda p: (p[1], p[0]))  ## e.g. ((b'l', b'o'), 0)
+                merge_pair = best_pair[0][0] + best_pair[0][1]  ## e.g. b'lo'
+                new_word = []
+                i = 0
+                while i < len(word_in_bytes):
+                    if i < len(word_in_bytes) - 1 and (word_in_bytes[i], word_in_bytes[i+1]) == best_pair[0]:
+                        new_word.append(merge_pair)
+                        i = i + 2
+                        continue
+
+                    new_word.append(word_in_bytes[i])
+                    i += 1
+
+                word_in_bytes = tuple(new_word)
 
             for i in range(len(word_in_bytes)):
                 encode_words.append(vocab_reverse[word_in_bytes[i]])
 
         return encode_words
-
-
-FIXTURES_PATH = (pathlib.Path(__file__).resolve().parent.parent) / "data"
-tokenizer = Tokenizer.from_files(FIXTURES_PATH / "vocab.json", FIXTURES_PATH / "merges.txt")
-print(tokenizer.encode("hello there is a cat."))
-
-
-
