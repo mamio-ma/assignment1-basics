@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from collections import defaultdict
 from collections.abc import Iterable
@@ -9,7 +10,9 @@ import numpy.typing as npt
 import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
-from cs336_basics.Utils import read_chunks, pre_tokenization, train_bpe
+
+from cs336_basics.Tokenizer import Tokenizer
+from cs336_basics.Utils import pre_tokenization, train_bpe
 
 
 def run_linear(
@@ -545,7 +548,7 @@ def get_tokenizer(
     vocab: dict[int, bytes],
     merges: list[tuple[bytes, bytes]],
     special_tokens: list[str] | None = None,
-) -> Any:
+) -> Tokenizer:
     """Given a vocabulary, a list of merges, and a list of special tokens,
     return a BPE tokenizer that uses the provided vocab, merges, and special tokens.
 
@@ -561,7 +564,7 @@ def get_tokenizer(
     Returns:
         A BPE tokenizer that uses the provided vocab, merges, and special tokens.
     """
-    raise NotImplementedError
+    return Tokenizer(vocab, merges, special_tokens)
 
 
 def run_train_bpe(
@@ -591,13 +594,41 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    chunks = read_chunks(input_path, 16)
-    counts = pre_tokenization(chunks, special_tokens)
-    return train_bpe(counts, vocab_size - 256 - len(special_tokens), special_tokens)
+
+    counts = pre_tokenization(input_path, 16, special_tokens)
+    vocab, merges =  train_bpe(counts, vocab_size - 256 - len(special_tokens), special_tokens)
+    return vocab, merges
 
 
+def save_as_param(name: str, vocab: dict[int, bytes], merges: list[tuple[bytes, bytes]]):
+    from tests.common import gpt2_bytes_to_unicode
 
-import cProfile
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+    byte_encoder = gpt2_bytes_to_unicode()
 
+    # Save vocab: map each vocab entry to its GPT-2 unicode string representation
+    # Format: {unicode_string: token_id}
+    vocab_json = {}
+    for token_id, token_bytes in vocab.items():
+        try:
+            unicode_str = "".join(byte_encoder[b] for b in token_bytes)
+        except KeyError:
+            # Special tokens: store as-is
+            unicode_str = token_bytes.decode("utf-8")
+        vocab_json[unicode_str] = token_id
+
+    with open(os.path.join(data_dir, name + "_vocab.json"), "w", encoding="utf-8") as f:
+        json.dump(vocab_json, f, ensure_ascii=False, indent=4)
+
+    # Save merges: each line is "token1 token2" in GPT-2 unicode representation
+    with open(os.path.join(data_dir, name + "_merges.txt"), "w", encoding="utf-8") as f:
+        for token1, token2 in merges:
+            str1 = "".join(byte_encoder[b] for b in token1)
+            str2 = "".join(byte_encoder[b] for b in token2)
+            f.write(f"{str1} {str2}\n")
+
+
+## run test in the background: nohup uv run python tests/adapters.py > train_bpe_TinyStoresV2.log 2>&1 &
 if __name__ == "__main__":
-    cProfile.run('run_train_bpe("/Users/mingyongm/Desktop/project/assignment1-basics/data/TinyStoriesV2-GPT4-train.txt", 10000, ["<|endoftext|>"])')
+    vocab, merges = run_train_bpe("/Users/mingyongm/Desktop/project/assignment1-basics/data/TinyStoriesV2-GPT4-train.txt", 10000, ["<|endoftext|>"])
+    save_as_param("TinyStoresV2", vocab, merges)

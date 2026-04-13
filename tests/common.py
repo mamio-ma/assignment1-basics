@@ -52,3 +52,9 @@ def gpt2_bytes_to_unicode() -> dict[int, str]:
     characters = [chr(n) for n in cs]
     d = dict(zip(bs, characters))
     return d
+
+
+def unicode_str_to_bytes(s: str) -> bytes:
+    unicode_to_byte = {v: k for k, v in gpt2_bytes_to_unicode().items()}
+    byte_list = [unicode_to_byte[c] for c in s]
+    return bytes(byte_list)

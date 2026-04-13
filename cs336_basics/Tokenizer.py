@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import List, Dict
+from typing import List, Dict, Iterable, Iterator
 import os
 import json
 from tests.common import unicode_str_to_bytes
@@ -15,6 +15,7 @@ class Tokenizer:
         self._vocab = vocab
         self._merges = merges
         self._special_tokens = special_tokens
+
 
     @classmethod
     def from_files(cls, vocab_filepath, merges_filepath, special_tokens: list[str] | None =None):
@@ -43,7 +44,8 @@ class Tokenizer:
         encode_words: List[int] = []
 
         if self._special_tokens:
-            pattern = "|".join(re.escape(t) for t in self._special_tokens)
+            sorted_tokens = sorted(self._special_tokens, key=len, reverse=True)
+            pattern = "|".join(re.escape(t) for t in sorted_tokens)
             # the difference between re.split(pattern, text) and re.split(f"({pattern})", text) is the second way will keep the special token
             parts = re.split(f"({pattern})", text)
         else:
@@ -98,3 +100,17 @@ class Tokenizer:
                 encode_words.append(vocab_reverse[word_in_bytes[i]])
 
         return encode_words
+
+    def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
+        for text in iterable:
+            for token in self.encode(text):
+                yield token
+
+    def decode(self, ids: list[int]) -> str:
+        byte_chunks = []
+        for id in ids:
+            if id in self._vocab:
+                byte_chunks.append(self._vocab[id])
+
+        return b''.join(byte_chunks).decode("utf-8", errors="replace")
+

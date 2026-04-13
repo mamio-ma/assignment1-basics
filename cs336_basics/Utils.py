@@ -74,8 +74,11 @@ def find_chunk_boundaries(
 
 def sum_word_count(chunk: str, special_tokens: List[str], q: Queue):
     count: dict[str, int] = defaultdict(int)  ## store count of each words in str: e.g. {low: 5...}
-    pattern = "|".join(re.escape(t) for t in special_tokens)
-    chunk_without_special_tokens = re.split(pattern, chunk)
+    if special_tokens:
+        pattern = "|".join(re.escape(t) for t in special_tokens)
+        chunk_without_special_tokens = re.split(pattern, chunk)
+    else:
+        chunk_without_special_tokens = [chunk]
     for corpus in chunk_without_special_tokens:
         PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
         iter = re.finditer(PAT, corpus)
