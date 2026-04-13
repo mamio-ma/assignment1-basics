@@ -630,5 +630,5 @@ def save_as_param(name: str, vocab: dict[int, bytes], merges: list[tuple[bytes, 
 
 ## run test in the background: nohup uv run python tests/adapters.py > train_bpe_TinyStoresV2.log 2>&1 &
 if __name__ == "__main__":
-    vocab, merges = run_train_bpe("/Users/mingyongm/Desktop/project/assignment1-basics/data/TinyStoriesV2-GPT4-train.txt", 10000, ["<|endoftext|>"])
-    save_as_param("TinyStoresV2", vocab, merges)
+    vocab, merges = run_train_bpe("/Users/mingyongm/Desktop/project/assignment1-basics/data/owt_train.txt", 32000, [])
+    save_as_param("owt", vocab, merges)

@@ -102,9 +102,21 @@ class Tokenizer:
         return encode_words
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
+        PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+        leftover = ""
         for text in iterable:
-            for token in self.encode(text):
-                yield token
+            text = leftover + text
+            words = re.findall(PAT, text)
+
+            leftover = words.pop() if words else text
+
+            for word in words:
+                for token_id in self.encode(word):
+                    yield token_id
+
+        if leftover:
+            for token_id in self.encode(leftover):
+                yield token_id
 
     def decode(self, ids: list[int]) -> str:
         byte_chunks = []
