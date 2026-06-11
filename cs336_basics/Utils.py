@@ -121,41 +121,88 @@ def train_bpe(
     num_merges: int,
     special_tokens: list[str]
 ):
-    merges: list[tuple[bytes, bytes]] = [] # index1, index2 => merged index
-    vocab: dict[int, bytes] = {x: bytes([x]) for x in range(256)}  # index -> bytes
+    merges: list[tuple[bytes, bytes]] = []
+    vocab: dict[int, bytes] = {x: bytes([x]) for x in range(256)}
 
-    for i in range(num_merges):
-        # count the number of occurrences for each pair
-        counts = defaultdict(int)
-        for k, v in indices.items():
-            for idx in range(len(k) - 1):
-                counts[(k[idx], k[idx + 1])] += v
+    # Convert to mutable lists indexed by word_id for O(1) update
+    word_list = list(indices.keys())
+    word_count_list = list(indices.values())
+    words: list[list[bytes]] = [list(wt) for wt in word_list]
 
-        pair = max(counts, key=lambda p: (counts[p], p))
-        index1, index2 = pair
-        new_index = 256 + i
-        merges.append(pair)
-        vocab[new_index] = index1 + index2
+    # pair_counts[pair] = total frequency of this adjacent pair across all words
+    pair_counts: dict[tuple[bytes, bytes], int] = defaultdict(int)
+    # pair_to_word_ids[pair] = set of word IDs whose current form contains this pair
+    pair_to_word_ids: dict[tuple[bytes, bytes], set] = defaultdict(set)
 
-        # update the indices with the new merge
-        new_indices: dict[tuple[bytes, ...], int] = {}
-        merge_pair = index1 + index2
-        for word_tuple, count in indices.items():
-            new_word = []
-            idx = 0
-            while idx < len(word_tuple):
-                if idx < len(word_tuple) - 1 and word_tuple[idx] == index1 and word_tuple[idx + 1] == index2:
-                    new_word.append(merge_pair)
-                    idx += 2
+    # Initialize counts by scanning all words once (O(V * L) total)
+    for word_id, (word, count) in enumerate(zip(words, word_count_list)):
+        for i in range(len(word) - 1):
+            pair = (word[i], word[i + 1])
+            pair_counts[pair] += count
+            pair_to_word_ids[pair].add(word_id)
+
+    for merge_i in range(num_merges):
+        if merge_i % 100 == 0:
+            print(f"Merge {merge_i}/{num_merges}")
+
+        if not pair_counts:
+            break
+
+        # Select the highest-frequency pair; break ties by lexicographic order
+        best_pair = max(pair_counts, key=lambda p: (pair_counts[p], p))
+        index1, index2 = best_pair
+        new_token = index1 + index2
+
+        merges.append(best_pair)
+        vocab[256 + merge_i] = new_token
+
+        # Only the words that contain this pair need updating
+        affected = pair_to_word_ids.pop(best_pair)
+        del pair_counts[best_pair]
+
+        for word_id in affected:
+            word = words[word_id]
+            count = word_count_list[word_id]
+
+            # Remove this word's contribution from every pair it currently contains.
+            # We skip best_pair (already popped). A word may contain a non-best
+            # pair multiple times, so we subtract the full word count per occurrence.
+            # Bug that this avoids: a pair like (e, r) may appear at two positions
+            # in the same word; if we only subtract the right-neighbor occurrence we
+            # decrement pair_counts correctly but incorrectly discard word_id from
+            # pair_to_word_ids, causing the word to be skipped in the future merge
+            # step that selects that pair as best.
+            for i in range(len(word) - 1):
+                pair = (word[i], word[i + 1])
+                if pair == best_pair:
+                    continue
+                pair_counts[pair] -= count
+                if pair_counts[pair] <= 0:
+                    del pair_counts[pair]
+                pair_to_word_ids[pair].discard(word_id)
+
+            # Rebuild the word, replacing every non-overlapping occurrence left-to-right
+            new_word: list[bytes] = []
+            i = 0
+            while i < len(word):
+                if i < len(word) - 1 and word[i] == index1 and word[i + 1] == index2:
+                    new_word.append(new_token)
+                    i += 2
                 else:
-                    new_word.append(word_tuple[idx])
-                    idx += 1
+                    new_word.append(word[i])
+                    i += 1
 
-            new_indices[tuple(new_word)] = count
+            words[word_id] = new_word
 
-        indices = new_indices
+            # Re-add this word's contribution for every pair in new_word.
+            # Re-adding is always safe: pairs that survived unchanged are
+            # re-counted correctly; new pairs from new_token enter fresh.
+            for i in range(len(new_word) - 1):
+                pair = (new_word[i], new_word[i + 1])
+                pair_counts[pair] += count
+                pair_to_word_ids[pair].add(word_id)
 
-    # add the special token at the bottom
+    # Append special tokens at the end of the vocabulary
     for i, token in enumerate(special_tokens):
         vocab[i + len(vocab)] = token.encode("utf-8")
 
