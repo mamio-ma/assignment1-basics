@@ -44,6 +44,9 @@ class Tokenizer:
         encode_words: List[int] = []
 
         if self._special_tokens:
+            # Sort longest first: regex alternation (|) matches left-to-right and stops at the first match,
+            # so if a shorter token is a prefix of a longer one (e.g. <|end|> vs <|endoftext|>),
+            # putting the shorter one first would cause it to consume the input before the longer token gets a chance.
             sorted_tokens = sorted(self._special_tokens, key=len, reverse=True)
             pattern = "|".join(re.escape(t) for t in sorted_tokens)
             # the difference between re.split(pattern, text) and re.split(f"({pattern})", text) is the second way will keep the special token
@@ -103,10 +106,16 @@ class Tokenizer:
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
         PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+        if self._special_tokens:
+            # Prepend special tokens (longest first) so findall matches them before PAT can break them apart
+            sorted_special = sorted(self._special_tokens, key=len, reverse=True)
+            combined_pat = "|".join(re.escape(t) for t in sorted_special) + "|" + PAT
+        else:
+            combined_pat = PAT
         leftover = ""
         for text in iterable:
             text = leftover + text
-            words = re.findall(PAT, text)
+            words = re.findall(combined_pat, text)
 
             leftover = words.pop() if words else text
 
