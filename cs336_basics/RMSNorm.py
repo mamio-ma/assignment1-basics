@@ -21,6 +21,10 @@ class RMSNorm(torch.nn.Module):
         self.weight = torch.nn.Parameter(
             torch.empty((self.d_model, ), **factory_kwargs)
         )
+        torch.nn.init.trunc_normal_(
+            self.weight,
+            1
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         mean_square = reduce(x ** 2, "batch_size sequence_length d_model -> batch_size sequence_length 1", "mean")
