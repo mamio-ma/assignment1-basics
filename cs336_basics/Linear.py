@@ -10,7 +10,7 @@ class Linear(torch.nn.Module):
 
     in_features: int
     out_features: int
-    weights: Tensor
+    weight: Tensor
     def __init__(
         self,
         in_features: int, ## final dimension of the input
@@ -61,7 +61,7 @@ class Linear(torch.nn.Module):
         #
         #   (batch_size, 768) @ (768, 3072)
         #   -> (batch_size, 3072)
-        self.weights = Parameter(
+        self.weight = Parameter(
             torch.empty((out_features, in_features), **factory_kwargs)
         )
         std = math.sqrt(
@@ -69,7 +69,7 @@ class Linear(torch.nn.Module):
         )
         ## normalize weights
         torch.nn.init.trunc_normal_(
-            self.weights,
+            self.weight,
             0,
             std,
             -3 * std,
@@ -79,6 +79,6 @@ class Linear(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return einsum(
             x,
-            self.weights,
+            self.weight,
             "... in_features, out_features in_features -> ... out_features"
         )

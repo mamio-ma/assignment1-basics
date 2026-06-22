@@ -16,6 +16,7 @@ from cs336_basics.Tokenizer import Tokenizer
 from cs336_basics.Linear import Linear
 from cs336_basics.Embedding import Embedding
 from cs336_basics.RMSNorm import RMSNorm
+from cs336_basics.Positionwise_FFN import Positionwise_FFN
 from cs336_basics.Utils import pre_tokenization, train_bpe
 
 
@@ -38,7 +39,7 @@ def run_linear(
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
     linear = Linear(d_in, d_out, device=in_features.device, dtype=in_features.dtype)
-    linear.weights = Parameter(weights)
+    linear.weight = Parameter(weights)
     return linear(in_features)
 
 
@@ -62,7 +63,7 @@ def run_embedding(
     """
     embedding = Embedding(vocab_size, d_model)
     embedding.weight = Parameter(weights)
-    return embedding.forward(token_ids)
+    return embedding(token_ids)
 
 
 def run_swiglu(
@@ -94,7 +95,11 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
+    ffn = Positionwise_FFN(d_model, d_ff, in_features.device, in_features.dtype)
+    ffn.weight1.weight.data = w1_weight
+    ffn.weight2.weight.data = w2_weight
+    ffn.weight3.weight.data = w3_weight
+    return ffn.forward(in_features)
 
 
 def run_scaled_dot_product_attention(
