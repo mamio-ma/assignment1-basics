@@ -20,6 +20,7 @@ from cs336_basics.Positionwise_FFN import Positionwise_FFN
 from cs336_basics.Utils import pre_tokenization, train_bpe
 from cs336_basics.RotaryPositionalEmbedding import RotaryPositionalEmbedding
 from cs336_basics.SoftMax import SoftMax
+from cs336_basics.scaled_dot_product_attention import scaled_dot_product_attention
 
 
 def run_linear(
@@ -122,7 +123,7 @@ def run_scaled_dot_product_attention(
     Returns:
         Float[Tensor, " ... queries d_v"]: Output of SDPA
     """
-    raise NotImplementedError
+    return scaled_dot_product_attention(Q, K, V, attention_mask=mask)
 
 
 def run_multihead_self_attention(
